@@ -15,9 +15,9 @@ np.set_printoptions(
 max_translate_velocity = 0.4 # Can be implemented as parameter
 max_turn_velocity = max_translate_velocity * 2 # Can be implemented as parameter
 set_logger_level("obstacle_avoidance", level=LoggingSeverity.DEBUG) # Configure to either LoggingSeverity.INFO or LoggingSeverity.DEBUG  
-minimum_distance = 0.26
+minimum_distance = 0.22 #0.26
 
-left_min = 0.326
+side_min = 0.286 #0.326
 
 
 class ObstacleAvoidanceNode(Node):
@@ -34,14 +34,11 @@ class ObstacleAvoidanceNode(Node):
         self.sub_pose = self.create_subscription(Odometry,'odom', self.sub_pose_callback,10)
         self.prev_location = None
         self.path_length= 0.0
-        self.sample_pose_count = 0.0
+        self.sample_pose_count = 0
         self.finished = False
 
         #calculate path duration
         self.start_time = None
-
-        #turning counter
-        self.turn_left = 0
 
         self.flag = 0
 
@@ -49,12 +46,7 @@ class ObstacleAvoidanceNode(Node):
         self.vy = 0
         self.y_coord = 0
 
-
-
-
-    
-
-        self.timer = self.create_timer(0.025, self.timer_callback)  # Runs at 20Hz. Can be changed.
+        self.timer = self.create_timer(0.1, self.timer_callback)  # Runs at 10Hz. Can be changed.
     def sub_pose_callback(self,msg):
         x = msg.pose.pose.position.x
         y = msg.pose.pose.position.y
@@ -90,7 +82,7 @@ class ObstacleAvoidanceNode(Node):
     def sub_scan_callback(self, msg):
         """Scan subscriber"""
         self.last_scan = np.array(msg.ranges)[::20] # Slices the 721 scan array to return only 36 scans. Feel free to edit
-        self.front = np.concatenate((self.last_scan[:4],self.last_scan[-4:]))
+        self.front = np.concatenate((self.last_scan[:5],self.last_scan[-4:]))
         self.front_left = self.last_scan[:9]
         self.front_right = self.last_scan[-9:]
         self.left = self.last_scan[8:13]
@@ -112,31 +104,27 @@ class ObstacleAvoidanceNode(Node):
 
         #new draft
         if np.all(self.front >= minimum_distance):
-            self.move_2D(0.3,0,0)
-            self.calculate_y(self.vy,0)
+            vy = 0
             #nested block for recentering. use front_left+left and front_right+right
-            #can i just check if there is nth on the left or right?
             if self.y_coord >= 0.05:
-                if np.all(self.right >= left_min) and np.all(self.front_right >=minimum_distance):
-                    self.move_2D(0.3,-0.2,0)
-                    self.calculate_y(self.vy,-0.2)
+                if np.all(self.right >= side_min) and np.all(self.front_right >=minimum_distance):
+                    vy = -0.2
             elif self.y_coord<=-0.05:
-                if np.all(self.left >= left_min) and np.all(self.front_left >=minimum_distance) :
-                    self.move_2D(0.3,0.2,0)
-                    self.calculate_y(self.vy,0.2)
-
-
+                if np.all(self.left >= side_min) and np.all(self.front_left >=minimum_distance) :
+                    vy = 0.2
+            self.move_2D(0.3,vy,0)
+            self.calculate_y(self.vy,vy)
         else:
             if self.flag == 0:
-                if np.all(self.front_left>=minimum_distance):
-                    self.move_2D(0,0.4,0)
-                    self.calculate_y(self.vy, 0.4)
+                # if np.all(self.front_left>=minimum_distance):
+                #     self.move_2D(0,0.4,0)
+                #     self.calculate_y(self.vy, 0.4)
 
-                elif np.all(self.front_right>=minimum_distance):
-                    self.move_2D(0,-0.4,0)
-                    self.calculate_y(self.vy, -0.4)
+                # elif np.all(self.front_right>=minimum_distance):
+                #     self.move_2D(0,-0.4,0)
+                #     self.calculate_y(self.vy, -0.4)
 
-                if np.any(self.left <= left_min):
+                if np.any(self.left <= side_min):
                     self.flag = 1
                     self.move_2D(0,-0.4,0)
                     self.calculate_y(self.vy, -0.4)
@@ -145,10 +133,10 @@ class ObstacleAvoidanceNode(Node):
                     self.calculate_y(self.vy, 0.4)
 
             else:
-                if np.all(self.front_right>=minimum_distance):
-                    self.move_2D(0,-0.4,0)
-                    self.calculate_y(self.vy, -0.4)
-                if np.any(self.right<=left_min):
+                # if np.all(self.front_right>=minimum_distance):
+                #     self.move_2D(0,-0.4,0)
+                #     self.calculate_y(self.vy, -0.4)
+                if np.any(self.right<=side_min):
                     self.flag = 0
                     self.move_2D(0,0.4,0)
                     self.calculate_y(self.vy, 0.4)
