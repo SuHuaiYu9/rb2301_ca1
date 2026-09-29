@@ -30,11 +30,15 @@ class ObstacleAvoidanceNode(Node):
         self.sub_scan = self.create_subscription(LaserScan, "scan", self.sub_scan_callback, 2) # The subscriber to the Lidar ranges.
         self.last_scan = None # Copied laser scan message
 
-        #subscribe to pose
-        # self.sub_pose = self.create_subscription(Odometry, "odom", self.sub_pose_callback, 10) # The subscriber to the pose message.
-        # self.last_pose = None # Copied pose message
-        # self.sub_cmd_vel = self.create_subscription(Twist, "cmd_vel", self.sub_cmd_vel_callback, 10) # The subscriber to the cmd_vel message.
-        # self.last_cmd_vel = None 
+        #calculate path length
+        self.sub_pose = self.create_subscription(Odometry,'odom', self.sub_pose_callback,10)
+        self.prev_location = None
+        self.path_length= 0.0
+        self.sample_pose_count = 0.0
+        self.finished = False
+
+        #calculate path duration
+        self.start_time = None
 
         #turning counter
         self.turn_left = 0
@@ -46,9 +50,32 @@ class ObstacleAvoidanceNode(Node):
         self.y_coord = 0
 
 
+
+
     
 
         self.timer = self.create_timer(0.025, self.timer_callback)  # Runs at 20Hz. Can be changed.
+    def sub_pose_callback(self,msg):
+        x = msg.pose.pose.position.x
+        y = msg.pose.pose.position.y
+        current_position = np.array([x,y])
+        if self.prev_location is not None:
+            step_distance = np.linalg.norm(current_position-self.prev_location)
+            self.path_length += step_distance
+        self.prev_location = current_position
+
+        self.sample_pose_count+=1
+        if x<=7.2:
+            if self.sample_pose_count%50==0: #odom publishing rate is abt 50hz
+                self.get_logger().info(f'path lenght: {self.path_length:.3f}')
+        elif not self.finished:
+            self.finished = True
+            finish_time = self.get_clock().now()
+            path_duration = finish_time.nanoseconds-self.start_time.nanoseconds
+            self.get_logger().info(f'final path length:{self.path_length:.3f}m\npath_duration:{path_duration*1e-9}s')
+
+            
+
 
     def move_2D(self, x: float = 0.0, y: float = 0.0, turn: float = 0.0):
         """Publishes a twist command to move in 2D space. +ve x is forwards, +ve y is left, and +ve turn is anticlockwise"""
@@ -75,6 +102,10 @@ class ObstacleAvoidanceNode(Node):
 
         if self.last_scan is None:
             return # Does not run if the laser message is not received.
+
+        if self.start_time is None:
+            self.start_time = self.get_clock().now()
+        
         
         ######################## MODIFY CODE HERE ########################
 
