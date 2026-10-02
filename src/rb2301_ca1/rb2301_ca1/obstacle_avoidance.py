@@ -30,41 +30,15 @@ class ObstacleAvoidanceNode(Node):
         self.sub_scan = self.create_subscription(LaserScan, "scan", self.sub_scan_callback, 2) # The subscriber to the Lidar ranges.
         self.last_scan = None # Copied laser scan message
 
-        #calculate path length
-        self.sub_pose = self.create_subscription(Odometry,'odom', self.sub_pose_callback,10)
-        self.prev_location = None
-        self.path_length= 0.0
-        self.sample_pose_count = 0
-        self.finished = False
-
-        #calculate path duration
-        self.start_time = None
-
+        #represents whether a dead end on the left side has been encountered
         self.flag = 0
 
+        #node attributes for recentering
         self.prev_time = self.get_clock().now()
         self.vy = 0
         self.y_coord = 0
 
         self.timer = self.create_timer(0.1, self.timer_callback)  # Runs at 10Hz. Can be changed.
-    def sub_pose_callback(self,msg):
-        x = msg.pose.pose.position.x
-        y = msg.pose.pose.position.y
-        current_position = np.array([x,y])
-        if self.prev_location is not None:
-            step_distance = np.linalg.norm(current_position-self.prev_location)
-            self.path_length += step_distance
-        self.prev_location = current_position
-
-        self.sample_pose_count+=1
-        if x<=7.2:
-            if self.sample_pose_count%50==0: #odom publishing rate is abt 50hz
-                self.get_logger().info(f'path lenght: {self.path_length:.3f}')
-        elif not self.finished:
-            self.finished = True
-            finish_time = self.get_clock().now()
-            path_duration = finish_time.nanoseconds-self.start_time.nanoseconds
-            self.get_logger().info(f'final path length:{self.path_length:.3f}m\npath_duration:{path_duration*1e-9}s')
 
             
 
@@ -94,37 +68,29 @@ class ObstacleAvoidanceNode(Node):
 
         if self.last_scan is None:
             return # Does not run if the laser message is not received.
-
-        if self.start_time is None:
-            self.start_time = self.get_clock().now()
         
         
         ######################## MODIFY CODE HERE ########################
 
+        #if front unobstructed, move forward
+        if np.all(self.front >= minimum_distance): 
+            vy = 0 #initiate variable for y-direction velocity
 
-        #new draft
-        if np.all(self.front >= minimum_distance):
-            vy = 0
-            #nested block for recentering. use front_left+left and front_right+right
-            if self.y_coord >= 0.05:
+            #nested block for recentering. use front_left+left and front_right+right to check if recentering towards either direction is clear
+
+            if self.y_coord >= 0.05: #use 0.05m as the tolerable band of deviation from original y-coordinate
+                #if nothing on right and front-right, then move diagonally right to recenter IF robot is left of original y-center
                 if np.all(self.right >= side_min) and np.all(self.front_right >=minimum_distance):
                     vy = -0.2
             elif self.y_coord<=-0.05:
                 if np.all(self.left >= side_min) and np.all(self.front_left >=minimum_distance) :
                     vy = 0.2
-            self.move_2D(0.3,vy,0)
-            self.calculate_y(self.vy,vy)
-        else:
-            if self.flag == 0:
-                # if np.all(self.front_left>=minimum_distance):
-                #     self.move_2D(0,0.4,0)
-                #     self.calculate_y(self.vy, 0.4)
-
-                # elif np.all(self.front_right>=minimum_distance):
-                #     self.move_2D(0,-0.4,0)
-                #     self.calculate_y(self.vy, -0.4)
-
-                if np.any(self.left <= side_min):
+            self.move_2D(0.3,vy,0) #robot either moves diagonally left or diagonally right
+            self.calculate_y(self.vy,vy) #function definition below
+        else: #if front is obstructed
+            if self.flag == 0: #robot by default moves left horizontally to avoid obstacles
+                #if left is/becomes obstructed before finding an opening in front, means theres a deadend on left, so change flag and go right
+                if np.any(self.left <= side_min): 
                     self.flag = 1
                     self.move_2D(0,-0.4,0)
                     self.calculate_y(self.vy, -0.4)
@@ -133,9 +99,6 @@ class ObstacleAvoidanceNode(Node):
                     self.calculate_y(self.vy, 0.4)
 
             else:
-                # if np.all(self.front_right>=minimum_distance):
-                #     self.move_2D(0,-0.4,0)
-                #     self.calculate_y(self.vy, -0.4)
                 if np.any(self.right<=side_min):
                     self.flag = 0
                     self.move_2D(0,0.4,0)
@@ -143,11 +106,12 @@ class ObstacleAvoidanceNode(Node):
                 else:
                     self.move_2D(0,-0.4,0)
                     self.calculate_y(self.vy, -0.4)
-
+    ######################## MODIFY CODE HERE ########################
+    #helper function for tracking y-direction displacement for recentering
     def calculate_y(self, prev_vy, current_vy):
         self.current = self.get_clock().now()
         dt = self.current - self.prev_time
-        self.y_coord += (dt.nanoseconds/1e9) * prev_vy
+        self.y_coord += (dt.nanoseconds/1e9) * prev_vy #tracks y-coordinate based on integrating prev commanded velocity
         self.prev_time = self.current
         self.vy = current_vy
 
@@ -156,7 +120,7 @@ class ObstacleAvoidanceNode(Node):
 
 
 
-        ######################## MODIFY CODE HERE ########################
+        
 
 
 
