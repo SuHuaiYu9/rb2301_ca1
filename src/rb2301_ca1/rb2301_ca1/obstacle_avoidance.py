@@ -56,11 +56,13 @@ class ObstacleAvoidanceNode(Node):
     def sub_scan_callback(self, msg):
         """Scan subscriber"""
         self.last_scan = np.array(msg.ranges)[::20] # Slices the 721 scan array to return only 36 scans. Feel free to edit
-        self.front = np.concatenate((self.last_scan[:5],self.last_scan[-4:]))
-        self.front_left = self.last_scan[:9]
-        self.front_right = self.last_scan[-9:]
-        self.left = self.last_scan[8:13]
-        self.right = self.last_scan[23:28]
+        #index 0 points straight ahead and each index adds 10 deg anticlockwise
+        #so left index i is mirrored by right index 36-i. 
+        self.front = np.concatenate((self.last_scan[:4],self.last_scan[33:36])) #0, +-10, +-20, +-30 deg
+        self.front_left = self.last_scan[1:9] #+10 to +80 deg
+        self.front_right = self.last_scan[28:36] #-10 to -80 deg
+        self.left = self.last_scan[8:13] #+80 to +120 deg
+        self.right = self.last_scan[24:29] #-80 to -120 deg
 
 
     def timer_callback(self):
